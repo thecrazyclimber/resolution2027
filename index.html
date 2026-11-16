@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Résolutions 2027 🎆</title>
+<style>
+:root{--bg:#0b0b1a;--fg:#f4f1ea;--mut:#9a98b0;--gold:#f5c542;--pink:#ff5fa2;--card:#17172e;--ok:#3ddc97;--ko:#ff5c5c}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--fg);font:16px/1.5 system-ui,sans-serif;background:radial-gradient(circle at 20% 0,#2a1a55,transparent 50%),radial-gradient(circle at 90% 30%,#4a1a45,transparent 45%),var(--bg)}
+#app{max-width:760px;margin:0 auto;padding:20px 16px 60px}
+h1,h2,.big{font-family:Georgia,serif;margin:.3em 0}
+h1{font-size:2.2rem;text-align:center;background:linear-gradient(90deg,var(--gold),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
+.muted{color:var(--mut);font-size:.9rem}
+nav{display:flex;gap:8px;justify-content:center;margin:14px 0 22px}
+button,input{font:inherit;border-radius:12px;border:1px solid #33335a;background:var(--card);color:var(--fg);padding:10px 14px}
+input{width:100%;margin:5px 0}
+button{cursor:pointer;transition:.15s}
+button:hover{border-color:var(--gold)}
+button.on,button.pri{background:linear-gradient(90deg,var(--gold),var(--pink));color:#111;border:0;font-weight:700}
+.card{background:var(--card);border:1px solid #2c2c55;border-radius:18px;padding:18px;margin:12px 0}
+.res{font-size:1.25rem;font-family:Georgia,serif;margin:.4em 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin:14px 0}
+.face{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 6px}
+.av{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:1.4rem;color:#111}
+.face.ok{outline:3px solid var(--ok);animation:pop .5s}
+.face.ko{outline:3px solid var(--ko);opacity:.45;animation:shake .4s}
+.modes{display:grid;gap:12px}.modes button{text-align:left;padding:18px}.modes b{font-size:1.2rem;display:block}
+.flip{perspective:800px;height:170px;cursor:pointer}
+.flip>div{position:relative;width:100%;height:100%;transition:transform .7s;transform-style:preserve-3d}
+.flip.on>div{transform:rotateY(180deg)}
+.flip .f,.flip .b{position:absolute;inset:0;backface-visibility:hidden;border-radius:16px;padding:12px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;overflow:auto}
+.flip .f{background:linear-gradient(135deg,#3a2a7a,#7a2a6a);font-size:2.5rem}
+.flip .b{background:var(--card);border:1px solid var(--gold);transform:rotateY(180deg);font-size:.85rem}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.stage{text-align:center;padding:30px 0;min-height:300px}
+.count{font-size:7rem;font-family:Georgia,serif;color:var(--gold);animation:pop .8s}
+.name{font-size:2.6rem;font-family:Georgia,serif;color:var(--gold);animation:pop .8s}
+.line{opacity:0;animation:up .8s forwards}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--gold);color:#111;padding:10px 18px;border-radius:99px;font-weight:700}
+.err{color:var(--ko)}
+@keyframes pop{0%{transform:scale(.4);opacity:0}70%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+@keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+@keyframes up{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+</style></head><body><div id="app"></div>
+<script>
+/* ====== CONFIG : colle ici les valeurs de ton projet Supabase ====== */
+const CONFIG={url:"",key:""};
+/* ================================================================== */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a};
+const ls={get:k=>{try{return localStorage.getItem(k)||""}catch(e){return""}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
+const b64=b=>btoa(String.fromCharCode(...new Uint8Array(b)));
+const ub64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const hue=n=>[...n].reduce((a,c)=>a+c.charCodeAt(0)*17,0)%360;
+const av=n=>`<div class="av" style="background:hsl(${hue(n)} 80% 65%)">${esc(n[0]||"?").toUpperCase()}</div>`;
+
+let S={tab:"write",ready:false,pub:"",revealed:false,names:[],entries:[],mode:null,demo:false,msg:"",err:""};
+
+/* ---------- Crypto : RSA-OAEP + AES-GCM (tout se passe dans le navigateur) ---------- */
+async function genKeys(){
+  const k=await crypto.subtle.generateKey({name:"RSA-OAEP",modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:"SHA-256"},true,["encrypt","decrypt"]);
+  return{pub:b64(await crypto.subtle.exportKey("spki",k.publicKey)),priv:b64(await crypto.subtle.exportKey("pkcs8",k.privateKey))};
+}
+async function encrypt(pubB64,obj){
+  const pub=await crypto.subtle.importKey("spki",ub64(pubB64),{name:"RSA-OAEP",hash:"SHA-256"},false,["encrypt"]);
+  const aes=await crypto.subtle.generateKey({name:"AES-GCM",length:256},true,["encrypt"]);
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const c=await crypto.subtle.encrypt({name:"AES-GCM",iv},aes,new TextEncoder().encode(JSON.stringify(obj)));
+  const k=await crypto.subtle.encrypt({name:"RSA-OAEP"},pub,await crypto.subtle.exportKey("raw",aes));
+  return JSON.stringify({k:b64(k),iv:b64(iv),c:b64(c)});
+}
+async function decryptAll(privB64,rows){
+  const priv=await crypto.subtle.importKey("pkcs8",ub64(privB64),{name:"RSA-OAEP",hash:"SHA-256"},false,["decrypt"]);
+  const out=[];
+  for(const r of rows){
+    const d=JSON.parse(r.data);
+    const raw=await crypto.subtle.decrypt({name:"RSA-OAEP"},priv,ub64(d.k));
+    const aes=await crypto.subtle.importKey("raw",raw,"AES-GCM",false,["decrypt"]);
+    const p=await crypto.subtle.decrypt({name:"AES-GCM",iv:ub64(d.iv)},aes,ub64(d.c));
+    out.push({name:r.name,l:JSON.parse(new TextDecoder().decode(p)).l});
+  }
+  return out;
+}
+
+/* ---------- API Supabase (fonctions SQL « RPC ») ---------- */
+async function api(fn,args={}){
+  const r=await fetch(`${CONFIG.url}/rest/v1/rpc/${fn}`,{method:"POST",headers:{"Content-Type":"application/json",apikey:CONFIG.key,Authorization:"Bearer "+CONFIG.key},body:JSON.stringify(args)});
+  const t=await r.text(); const j=t?JSON.parse(t):null;
+  if(!r.ok) throw new Error(j?.message||"Erreur réseau");
+  return j;
+}
+async function refresh(){
+  if(S.demo||!CONFIG.url) return;
+  try{
+    const st=await api("get_state");
+    const was=S.revealed; Object.assign(S,st); S.err="";
+    if(S.revealed&&!S.entries.length){const g=await api("get_reveal");S.entries=shuffle(await decryptAll(g.priv,g.entries||[]))}
+    if(S.revealed&&!was&&S.tab==="reveal"||!was&&S.revealed) render();
+    else if(S.tab!=="write"||!document.activeElement||document.activeElement.tagName!=="INPUT") render();
+  }catch(e){S.err=e.message;render()}
+}
+function toast(t){const d=document.createElement("div");d.className="toast";d.textContent=t;document.body.append(d);setTimeout(()=>d.remove(),2600)}
+
+/* ---------- Vues ---------- */
+function render(){
+  const a=$("#app");
+  const nav=["write","admin","reveal"].map((t,i)=>`<button class="${S.tab===t?"on":""}" onclick="S.tab='${t}';S.mode=null;render()">${["✍️ Écrire","🔑 Admin","🎁 Reveal"][i]}</button>`).join("");
+  let body="";
+  if(!CONFIG.url&&!S.demo) body=viewSetup();
+  else body=S.tab==="write"?viewWrite():S.tab==="admin"?viewAdmin():viewReveal();
+  a.innerHTML=`<h1>Résolutions 2027 🎆</h1><nav>${nav}</nav>${S.err?`<p class=err>${esc(S.err)}</p>`:""}${body}`;
+}
+function viewSetup(){return `<div class=card><h2>Presque prêt</h2><p>Le site n’est pas encore relié à une base de données. Suis le guide pour renseigner <code>CONFIG</code> en haut du fichier.</p><button class=pri onclick="startDemo()">Essayer en mode démo</button></div>`}
+function viewWrite(){
+  if(S.revealed) return `<div class=card><h2>Trop tard !</h2><p>Le reveal a été lancé, les résolutions sont verrouillées.</p></div>`;
+  if(!S.ready&&!S.demo) return `<div class=card><p>L’admin n’a pas encore initialisé la partie. Reviens bientôt.</p></div>`;
+  return `<div class=card><h2>Tes résolutions 2027</h2><p class=muted>Elles sont chiffrées dans ton navigateur avant l’envoi : personne, admin compris, ne peut les lire avant le reveal. Tu peux les modifier en renvoyant avec le même prénom.</p>
+  <input id=nm placeholder="Ton prénom" maxlength=24 value="${esc(ls.get("nm"))}">
+  <div id=lines>${[0,1,2].map(i=>`<input class=ln maxlength=140 placeholder="Résolution ${i+1}${i?" (optionnel)":""}">`).join("")}</div>
+  <p><button onclick="addLine()">+ Ajouter une ligne</button> <button class=pri onclick="send()">Envoyer en secret 🔒</button></p>
+  <p class=muted>Déjà participé (${S.names.length}) : ${S.names.map(esc).join(", ")||"personne pour l’instant"}</p></div>`;
+}
+function addLine(){if(document.querySelectorAll(".ln").length<6){$("#lines").insertAdjacentHTML("beforeend",`<input class=ln maxlength=140 placeholder="Autre résolution">`)}}
+async function send(){
+  const name=$("#nm").value.trim(), l=[...document.querySelectorAll(".ln")].map(i=>i.value.trim()).filter(Boolean);
+  if(!name||!l.length) return toast("Prénom + au moins une résolution !");
+  try{
+    if(S.demo){S.names=[...new Set([...S.names,name])]} else {await api("submit",{p_name:name,p_data:await encrypt(S.pub,{l})})}
+    ls.set("nm",name); toast("Envoyé et verrouillé 🔒"); document.querySelectorAll(".ln").forEach(i=>i.value=""); S.err=""; await refresh(); render();
+  }catch(e){S.err=e.message;render()}
+}
+function viewAdmin(){
+  if(S.demo) return `<div class=card><h2>Mode démo</h2><p>Données fictives, rien n’est envoyé nulle part.</p><button class=pri onclick="S.tab='reveal';render()">Aller au reveal</button></div>`;
+  if(!S.ready) return `<div class=card><h2>Initialiser la partie</h2><p class=muted>Choisis un mot de passe admin (il servira à déclencher le reveal). Une paire de clés est générée dans ton navigateur.</p><input id=pw type=password placeholder="Mot de passe admin"><button class=pri onclick="setup()">Initialiser</button></div>`;
+  if(!S.revealed) return `<div class=card><h2>Tout est en place</h2><p>${S.names.length} participant(s) : ${S.names.map(esc).join(", ")||"—"}</p><p class=muted>Tu ne vois que les prénoms : le contenu reste chiffré.</p><input id=pw type=password placeholder="Mot de passe admin"><button class=pri onclick="doReveal()">🚀 Déclencher le reveal</button></div>`;
+  return `<div class=card><h2>Reveal déclenché</h2><button class=pri onclick="S.tab='reveal';render()">Aller au reveal</button></div>`;
+}
+async function setup(){const pw=$("#pw").value;if(pw.length<4)return toast("Mot de passe trop court");
+  try{const k=await genKeys();await api("setup",{p_pub:k.pub,p_priv:k.priv,p_pw:pw});toast("Partie initialisée ✅");await refresh();render()}catch(e){S.err=e.message;render()}}
+async function doReveal(){try{await api("reveal",{p_pw:$("#pw").value});S.err="";S.entries=[];await refresh();S.tab="reveal";render()}catch(e){S.err=e.message;render()}}
+
+function startDemo(){S.demo=true;S.ready=true;S.revealed=true;S.tab="reveal";
+  const d={Léa:["Courir un semi-marathon","Arrêter de snoozer"],Tom:["Apprendre la guitare","Cuisiner 1 plat nouveau par semaine"],Inès:["Voyager au Japon","Lire 24 livres"],Hugo:["Me coucher avant minuit","Finir mon side project"],Sarah:["Boire plus d’eau (vraiment)","Faire du yoga"]};
+  S.entries=shuffle(Object.entries(d).map(([name,l])=>({name,l})));S.names=S.entries.map(e=>e.name);render()}
+
+function viewReveal(){
+  if(!S.revealed) return `<div class=card style="text-align:center"><div class=count style="font-size:4rem">🔒</div><h2>Les résolutions sont scellées</h2><p class=muted>${S.names.length} participant(s) · Rendez-vous au reveal !</p></div>`;
+  if(!S.entries.length) return `<div class=card><p>Chargement…</p></div>`;
+  if(S.mode==="q") return viewQ();
+  if(S.mode==="c") return viewC();
+  if(S.mode==="s") return viewS();
+  return `<h2>Choisis ton mode de reveal</h2><div class=modes>
+  <button onclick="startQ()"><b>🕵️ Qui est-ce ?</b><span class=muted>Une résolution apparaît, devine qui l’a écrite.</span></button>
+  <button onclick="S.mode='c';render()"><b>🃏 Cartes à retourner</b><span class=muted>Tout le monde choisit une carte à découvrir.</span></button>
+  <button onclick="startS()"><b>🎬 Grand spectacle</b><span class=muted>Compte à rebours, nom, puis résolutions une par une.</span></button></div>`;
+}
+/* Mode 1 : Qui est-ce ? */
+let Q={};
+function startQ(){Q={order:shuffle([...S.entries]),i:0,score:0,wrong:[],done:false};S.mode="q";render()}
+function viewQ(){
+  if(Q.i>=Q.order.length) return `<div class=card style="text-align:center"><h2>Terminé !</h2><p class=big style="font-size:2.5rem">${Q.score} / ${Q.order.length}</p><button onclick="S.mode=null;render()">Retour au menu</button></div>`;
+  const e=Q.order[Q.i];
+  return `<p class=muted>Qui est-ce ? ${Q.i+1}/${Q.order.length} · Score ${Q.score}</p>
+  <div class=card>${e.l.map(x=>`<p class=res>✨ ${esc(x)}</p>`).join("")}</div>
+  <div class=grid>${S.entries.map((p,i)=>`<button class="face ${Q.done&&p.name===e.name?"ok":""} ${Q.wrong.includes(p.name)?"ko":""}" onclick="guess(${i})">${av(p.name)}${esc(p.name)}</button>`).join("")}</div>
+  ${Q.done?`<p style="text-align:center"><b>🎉 C’était ${esc(e.name)} !</b></p><p style="text-align:center"><button class=pri onclick="Q.i++;Q.done=false;Q.wrong=[];render()">Suivant →</button></p>`:""}`;
+}
+function guess(i){if(Q.done)return;const p=S.entries[i],e=Q.order[Q.i];
+  if(p.name===e.name){Q.done=true;if(!Q.wrong.length)Q.score++}else if(!Q.wrong.includes(p.name))Q.wrong.push(p.name);render()}
+/* Mode 2 : Cartes */
+function viewC(){return `<p><button onclick="S.mode=null;render()">← Menu</button></p><div class=cards>${S.entries.map(e=>`<div class=flip onclick="this.classList.toggle('on')"><div><div class=f>🎁</div><div class=b><b style="font-size:1.1rem;color:var(--gold)">${esc(e.name)}</b>${e.l.map(x=>`<span>• ${esc(x)}</span>`).join("")}</div></div></div>`).join("")}</div>`}
+/* Mode 3 : Grand spectacle */
+let T={i:-1,busy:false};
+function startS(){T={i:-1,busy:false};S.mode="s";render()}
+function viewS(){
+  const e=T.i>=0&&T.i<S.entries.length&&S.entries[T.i];
+  const end=T.i>=S.entries.length;
+  return `<p><button onclick="S.mode=null;render()">← Menu</button></p><div class=stage id=stage>${
+    end?`<div class=name>Bonne année 2027 ! 🥂</div><p class=muted>Rendez-vous le 31 décembre 2027 pour le bilan…</p>`
+    :e?`<div class=name>${esc(e.name)}</div>${e.l.map((x,k)=>`<p class="res line" style="animation-delay:${.9+k*1.1}s">✨ ${esc(x)}</p>`).join("")}`
+    :`<p class=muted>Prêt·e·s ?</p>`}</div>
+  ${end?"":`<p style="text-align:center"><button class=pri onclick="nextS()">${T.i<0?"Lancer le spectacle":"Personne suivante →"}</button></p>`}`;
+}
+async function nextS(){if(T.busy)return;T.busy=true;
+  for(const n of [3,2,1]){$("#stage").innerHTML=`<div class=count>${n}</div>`;await sleep(850)}
+  T.i++;T.busy=false;render()}
+
+render(); refresh(); setInterval(refresh,8000);
+</script></body></html>
