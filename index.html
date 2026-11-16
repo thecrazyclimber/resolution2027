@@ -43,7 +43,7 @@ button.on,button.pri{background:linear-gradient(90deg,var(--gold),var(--pink));c
 </style></head><body><div id="app"></div>
 <script>
 /* ====== CONFIG : colle ici les valeurs de ton projet Supabase ====== */
-const CONFIG={url:"",key:""};
+const CONFIG={url:"https://mtwlzcktblrpxovvqorw.supabase.co/rest/v1/",key:"sb_publishable_1OEeZU5UapXiK8-q21q3Zw_DRqUvRMU"};
 /* ================================================================== */
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -85,7 +85,7 @@ async function decryptAll(privB64,rows){
 
 /* ---------- API Supabase (fonctions SQL « RPC ») ---------- */
 async function api(fn,args={}){
-  const r=await fetch(`${CONFIG.url}/rest/v1/rpc/${fn}`,{method:"POST",headers:{"Content-Type":"application/json",apikey:CONFIG.key,Authorization:"Bearer "+CONFIG.key},body:JSON.stringify(args)});
+  const r=await fetch(`${CONFIG.url}/rest/v1/rpc/${fn}`,{method:"POST",headers:{"Content-Type":"application/json",apikey:CONFIG.key,...(CONFIG.key.startsWith("eyJ")?{Authorization:"Bearer "+CONFIG.key}:{})},body:JSON.stringify(args)});
   const t=await r.text(); const j=t?JSON.parse(t):null;
   if(!r.ok) throw new Error(j?.message||"Erreur réseau");
   return j;
